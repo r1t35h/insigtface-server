@@ -48,7 +48,8 @@ async def process_images(files: List[UploadFile] = File(...)):
         faces = face_model.get(np_img)
 
         for face in faces:
-            x1, y1, x2, y2 = map(int, face.bbox)
+            # Ensure coordinates are Python ints
+            x1, y1, x2, y2 = [int(coord) for coord in face.bbox]
             cropped = np_img[y1:y2, x1:x2]
             cropped_pil = Image.fromarray(cropped)
             buffer = io.BytesIO()
@@ -60,11 +61,11 @@ async def process_images(files: List[UploadFile] = File(...)):
                 "id": f"face_{face_id_counter}",
                 "imageId": f"img_{image_id_counter}",
                 "boundingBox": {
-                    "topLeft": [x1, y1],
-                    "bottomRight": [x2, y2],
-                    "probability": round(face.det_score, 4)  # optional, available in InsightFace
+                    "topLeft": [float(x1), float(y1)],
+                    "bottomRight": [float(x2), float(y2)],
+                    "probability": float(face.det_score)
                 },
-                "embedding": face.embedding.tolist(),
+                "embedding": [float(x) for x in face.embedding],  # convert to native float list
                 "croppedFace": data_url
             })
 
@@ -78,5 +79,5 @@ async def process_images(files: List[UploadFile] = File(...)):
         "success": True,
         "faces": all_faces,
         "totalFaces": len(all_faces),
-        "processingTime": int((end_time - start_time) * 1000)  # in ms
+        "processingTime": int((end_time - start_time) * 1000)
     })
