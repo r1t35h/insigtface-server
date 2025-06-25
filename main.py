@@ -14,6 +14,23 @@ app = FastAPI()
 async def health_check():
     return JSONResponse(content={"status": "ok"})
 
+from fastapi.middleware.cors import CORSMiddleware
+
+# Allow local dev frontend
+origins = [
+    "http://localhost:5173",       # Vite dev server
+   # "https://your-app-name.bolt.ai",  # Your deployed frontend, add when needed
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,  # You can also use ["*"] for testing only (not recommended for prod)
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
 face_model = insightface.app.FaceAnalysis(name="buffalo_l", providers=["CPUExecutionProvider"])
 face_model.prepare(ctx_id=0)
 
