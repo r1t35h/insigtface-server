@@ -24,8 +24,7 @@ async def health_check():
 
 # Load MobileFaceNet model
 model = insightface.app.FaceAnalysis(
-    name="antelope",  # "antelope" is InsightFace's MobileFaceNet-based model
-    root="./models",  # Adjust path if needed
+    name="antelopev2",  # "antelope" is InsightFace's MobileFaceNet-based model  # Adjust path if needed
     providers=["CPUExecutionProvider"]  # Or "CUDAExecutionProvider" if GPU available
 )
 model.prepare(ctx_id=0)
