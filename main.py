@@ -14,7 +14,7 @@ app.add_middleware(
     allow_methods=["*"],
 )
 
-model = insightface.app.FaceAnalysis(name='buffalo_l', providers=['CPUExecutionProvider'])
+model = insightface.app.FaceAnalysis(name='buffalo_s', providers=['CPUExecutionProvider'])
 model.prepare(ctx_id=0)
 
 @app.post("/recognize/")
