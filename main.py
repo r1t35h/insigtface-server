@@ -2,71 +2,85 @@ from fastapi import FastAPI, UploadFile, File
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from typing import List
-import io, base64, time
+import io
+import base64
+import time
 import numpy as np
 from PIL import Image
 import insightface
+from insightface.model_zoo import get_model
 
 app = FastAPI()
 
-# CORS setup
+# CORS for local dev
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Replace with specific origins in production
+    allow_origins=["*"],  # Allow Vite dev server and deployed frontend
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+# Load detector and recognizer
+detector = get_model("scrfd_2.5g_bnkps", download=True)
+detector.prepare(ctx_id=0, input_size=(640, 640))
+
+recognizer = get_model("mobilenet", download=True)  # MobileFaceNet
+recognizer.prepare(ctx_id=0)
+
 @app.get("/health")
 async def health_check():
     return {"status": "ok"}
-
-# Load MobileFaceNet model
-model = insightface.app.FaceAnalysis(
-    name="antelopev2",  # "antelope" is InsightFace's MobileFaceNet-based model  # Adjust path if needed
-    providers=["CPUExecutionProvider"]  # Or "CUDAExecutionProvider" if GPU available
-)
-model.prepare(ctx_id=0)
 
 @app.post("/process-images")
 async def process_images(files: List[UploadFile] = File(...)):
     start_time = time.time()
     all_faces = []
-    face_id = 0
-    image_id = 0
+    face_id_counter = 0
+    image_id_counter = 0
 
     for file in files:
-        img_bytes = await file.read()
-        img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+        image_bytes = await file.read()
+        img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
         np_img = np.array(img)
-        faces = model.get(np_img)
 
-        for face in faces:
-            x1, y1, x2, y2 = map(int, face.bbox)
-            crop = np_img[y1:y2, x1:x2]
+        dets = detector.detect(np_img)
+        if dets is None or len(dets) == 0:
+            image_id_counter += 1
+            continue
+
+        bboxes = dets[:, :4].astype(int)
+        kpss = dets[:, 5:].reshape(-1, 5, 2)
+        scores = dets[:, 4]
+
+        for i, (bbox, kps, score) in enumerate(zip(bboxes, kpss, scores)):
+            face_crop = insightface.utils.face_align.norm_crop(np_img, landmark=kps)
+            embedding = recognizer.get(face_crop)
+
             buffer = io.BytesIO()
-            Image.fromarray(crop).save(buffer, format="JPEG")
-            base64_img = base64.b64encode(buffer.getvalue()).decode("utf-8")
+            Image.fromarray(face_crop).save(buffer, format="JPEG")
+            base64_cropped = base64.b64encode(buffer.getvalue()).decode("utf-8")
+            data_url = f"data:image/jpeg;base64,{base64_cropped}"
 
             all_faces.append({
-                "id": f"face_{face_id}",
-                "imageId": f"img_{image_id}",
+                "id": f"face_{face_id_counter}",
+                "imageId": f"img_{image_id_counter}",
                 "boundingBox": {
-                    "topLeft": [x1, y1],
-                    "bottomRight": [x2, y2],
-                    "probability": round(face.det_score, 4)
+                    "topLeft": bbox[:2].tolist(),
+                    "bottomRight": bbox[2:].tolist(),
+                    "probability": float(score)
                 },
-                "embedding": face.embedding.tolist(),
-                "croppedFace": f"data:image/jpeg;base64,{base64_img}"
+                "embedding": embedding.tolist(),
+                "croppedFace": data_url
             })
-            face_id += 1
+            face_id_counter += 1
 
-        image_id += 1
+        image_id_counter += 1
 
+    end_time = time.time()
     return JSONResponse(content={
         "success": True,
         "faces": all_faces,
         "totalFaces": len(all_faces),
-        "processingTime": int((time.time() - start_time) * 1000)
+        "processingTime": int((end_time - start_time) * 1000)
     })
