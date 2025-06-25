@@ -42,7 +42,7 @@ async def info():
     }
 
 # Load InsightFace model
-face_model = insightface.app.FaceAnalysis(name="buffalo_s", providers=["CPUExecutionProvider"])
+face_model = insightface.app.FaceAnalysis(name="antelopev2", providers=["CPUExecutionProvider"])
 face_model.prepare(ctx_id=0)
 
 @app.post("/process-images")
