@@ -7,26 +7,40 @@ import base64
 import time
 import numpy as np
 from PIL import Image
-import insightface
 from insightface.model_zoo import get_model
+import uuid
 
 app = FastAPI()
 
-# CORS for local dev
+# CORS setup
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow Vite dev server and deployed frontend
-    allow_credentials=False,
+    allow_origins=["*"],
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Load detector and recognizer
-detector = get_model("scrfd_2.5g_bnkps", download=True)
-recognizer = get_model("mobilenet", download=True)  # MobileFaceNet
 @app.get("/health")
-async def health_check():
+def health():
     return {"status": "ok"}
+
+@app.get("/info")
+def info():
+    return {
+        "model": "SCRFD + MobileFaceNet",
+        "version": "1.0",
+        "description": "Lightweight InsightFace server with custom detector/embedder pipeline"
+    }
+
+# Load models
+print("Loading models...")
+detector = get_model('scrfd_10g_bnkps.onnx', download=True)
+detector.prepare(ctx_id=0)
+
+embedder = get_model('mobilenet.onnx', download=True)
+embedder.prepare(ctx_id=0)
+print("Models loaded.")
 
 @app.post("/process-images")
 async def process_images(files: List[UploadFile] = File(...)):
@@ -40,33 +54,34 @@ async def process_images(files: List[UploadFile] = File(...)):
         img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
         np_img = np.array(img)
 
-        dets = detector.detect(np_img)
-        if dets is None or len(dets) == 0:
-            image_id_counter += 1
-            continue
+        bboxes, landmarks = detector.detect(np_img, max_num=0, metric='default')
 
-        bboxes = dets[:, :4].astype(int)
-        kpss = dets[:, 5:].reshape(-1, 5, 2)
-        scores = dets[:, 4]
-
-        for i, (bbox, kps, score) in enumerate(zip(bboxes, kpss, scores)):
-            face_crop = insightface.utils.face_align.norm_crop(np_img, landmark=kps)
-            embedding = recognizer.get(face_crop)
+        for i, box in enumerate(bboxes):
+            x1, y1, x2, y2 = box[:4].astype(int)
+            confidence = float(box[4])
+            cropped = np_img[y1:y2, x1:x2]
+            cropped_pil = Image.fromarray(cropped)
 
             buffer = io.BytesIO()
-            Image.fromarray(face_crop).save(buffer, format="JPEG")
+            cropped_pil.save(buffer, format="JPEG")
             base64_cropped = base64.b64encode(buffer.getvalue()).decode("utf-8")
             data_url = f"data:image/jpeg;base64,{base64_cropped}"
+
+            try:
+                embedding = embedder.get(cropped)
+            except Exception as e:
+                print("Embedding failed for face", e)
+                continue
 
             all_faces.append({
                 "id": f"face_{face_id_counter}",
                 "imageId": f"img_{image_id_counter}",
                 "boundingBox": {
-                    "topLeft": bbox[:2].tolist(),
-                    "bottomRight": bbox[2:].tolist(),
-                    "probability": float(score)
+                    "topLeft": [int(x1), int(y1)],
+                    "bottomRight": [int(x2), int(y2)],
+                    "probability": round(confidence, 4)
                 },
-                "embedding": embedding.tolist(),
+                "embedding": embedding.astype(float).tolist(),
                 "croppedFace": data_url
             })
             face_id_counter += 1
