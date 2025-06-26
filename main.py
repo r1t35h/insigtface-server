@@ -22,12 +22,8 @@ app.add_middleware(
 )
 
 # Load detector and recognizer
-detector = get_model("scrfd_2.5g_bnkps", download=True)
-
-
+detector = get_model("scrfd_2.5g_bnkps", download=True
 recognizer = get_model("mobilenet", download=True)  # MobileFaceNet
-recognizer.prepare(ctx_id=0)
-
 @app.get("/health")
 async def health_check():
     return {"status": "ok"}
