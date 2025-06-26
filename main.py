@@ -23,7 +23,7 @@ app.add_middleware(
 
 # Load detector and recognizer
 detector = get_model("scrfd_2.5g_bnkps", download=True)
-detector.prepare(ctx_id=0, input_size=(640, 640))
+
 
 recognizer = get_model("mobilenet", download=True)  # MobileFaceNet
 recognizer.prepare(ctx_id=0)
