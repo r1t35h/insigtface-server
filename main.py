@@ -20,8 +20,10 @@ app.add_middleware(
 )
 
 # Initialize models
-detector = get_model("scrfd_2.5g_bnkps", download=True)
+detector = get_model("SCRFD_10G_KPS", download=True)
 embedder = get_model("arcface_mobilefacenet", download=True)
+assert detector is not None, "Failed to load SCRFD"
+assert embedder is not None, "Failed to load MobileFaceNet"
 @app.get("/health")
 async def health():
     return JSONResponse(content={"status": "ok"})
